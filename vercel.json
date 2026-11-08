@@ -3,12 +3,6 @@
   "framework": "vite",
   "buildCommand": "pnpm run build:web-app",
   "outputDirectory": "web-app/dist",
-  "crons": [
-    {
-      "path": "/api/cron/sync-announcements",
-      "schedule": "*/10 * * * *"
-    }
-  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
