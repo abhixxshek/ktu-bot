@@ -1,0 +1,128 @@
+import { BotContext } from "../../types/bot.types.js";
+import { NextFunction } from "grammy";
+import logger from "../../utils/logger.js";
+import { getMediaType, getUpdateType } from "../../utils/bot.js";
+
+const MAX_TEXT_LOG_LENGTH = 100;
+const MAX_QUERY_LOG_LENGTH = 50;
+
+// Arrival timestamps stamped before `sequentialize` so the per-chat queue
+// wait stays observable after `logging` moved downstream of it. Keyed by the
+// per-update context object, which is unique for each update.
+const arrivalTimes = new WeakMap<object, number>();
+
+async function stampArrivalTime(
+  ctx: BotContext,
+  next: NextFunction
+): Promise<void> {
+  arrivalTimes.set(ctx, Date.now());
+  await next();
+}
+
+async function logging(ctx: BotContext, next: NextFunction): Promise<void> {
+  const start = Date.now();
+  const receivedAt = arrivalTimes.get(ctx);
+  arrivalTimes.delete(ctx);
+  const queueWaitMs =
+    receivedAt !== undefined ? Math.max(0, start - receivedAt) : 0;
+
+  const updateType = getUpdateType(ctx.update);
+
+  const logData: Record<string, unknown> = {
+    update_id: ctx.update.update_id,
+    type: updateType,
+    user_id: ctx.from?.id,
+    username: ctx.from?.username,
+    first_name: ctx.from?.first_name,
+    last_name: ctx.from?.last_name,
+    is_bot: ctx.from?.is_bot,
+    is_premium: ctx.from?.is_premium,
+    language_code: ctx.from?.language_code,
+    chat_id: ctx.chat?.id,
+    chat_type: ctx.chat?.type,
+  };
+
+  if (ctx.message) {
+    Object.assign(logData, {
+      message_id: ctx.message.message_id,
+      text: ctx.message.text?.slice(0, MAX_TEXT_LOG_LENGTH),
+      text_length: ctx.message.text?.length,
+      command: ctx.message.text?.startsWith("/")
+        ? ctx.message.text.split(" ")[0]
+        : undefined,
+      message_date: ctx.message.date,
+      has_entities: (ctx.message.entities?.length ?? 0) > 0,
+      entity_types: ctx.message.entities?.map(e => e.type),
+      media_type: getMediaType(ctx.message),
+      is_forwarded: !!ctx.message.forward_origin,
+      is_reply: !!ctx.message.reply_to_message,
+      reply_to_message_id: ctx.message.reply_to_message?.message_id,
+      has_reply_markup: !!ctx.message.reply_markup,
+    });
+  }
+
+  if (ctx.callbackQuery) {
+    Object.assign(logData, {
+      callback_data: ctx.callbackQuery.data,
+      callback_id: ctx.callbackQuery.id,
+      message_id: ctx.callbackQuery.message?.message_id,
+      inline_message_id: ctx.callbackQuery.inline_message_id,
+    });
+  }
+
+  if (ctx.inlineQuery) {
+    Object.assign(logData, {
+      query: ctx.inlineQuery.query?.slice(0, MAX_QUERY_LOG_LENGTH),
+      query_length: ctx.inlineQuery.query?.length,
+      inline_query_id: ctx.inlineQuery.id,
+      offset: ctx.inlineQuery.offset,
+      chat_type: ctx.inlineQuery.chat_type,
+      location: ctx.inlineQuery.location ? "provided" : undefined,
+    });
+  }
+
+  if (ctx.editedMessage) {
+    Object.assign(logData, {
+      edited_message_id: ctx.editedMessage.message_id,
+      edited_text: ctx.editedMessage.text?.slice(0, MAX_TEXT_LOG_LENGTH),
+      edit_date: ctx.editedMessage.edit_date,
+    });
+  }
+
+  if (ctx.update.chat_member || ctx.update.my_chat_member) {
+    const memberUpdate = ctx.update.chat_member || ctx.update.my_chat_member;
+    Object.assign(logData, {
+      member_user_id: memberUpdate?.new_chat_member.user.id,
+      old_status: memberUpdate?.old_chat_member.status,
+      new_status: memberUpdate?.new_chat_member.status,
+      member_update_date: memberUpdate?.date,
+    });
+  }
+
+  logger.info(logData, "User action");
+
+  let outcome: "success" | "error" = "success";
+
+  try {
+    await next();
+  } catch (error) {
+    outcome = "error";
+    throw error;
+  } finally {
+    const duration = Date.now() - start;
+    logger.info(
+      {
+        chat_id: ctx.chat?.id,
+        update_id: ctx.update.update_id,
+        update_type: updateType,
+        outcome,
+        response_time_ms: duration,
+        queue_wait_ms: queueWaitMs,
+      },
+      "Response time"
+    );
+  }
+}
+
+export default logging;
+export { stampArrivalTime };

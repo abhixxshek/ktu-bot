@@ -1,0 +1,165 @@
+import { BotContext } from "../../../types/bot.types.js";
+import { Composer } from "grammy";
+import { createComposerErrorBoundary } from "../shared/error-boundary.js";
+import { downloading, problem } from "../../../utils/message-style.js";
+import logger from "../../../utils/logger.js";
+import type { InlineQueryResult } from "grammy/types";
+import { addAttachmentDeliveryJob } from "../../../workers/attachment-delivery/queue.js";
+import { getDb } from "../../../db/index.js";
+import { AcademicCalendarsRepository } from "../../../db/repositories/academic-calendars-repository.js";
+import { AnnouncementsRepository } from "../../../db/repositories/announcements-repository.js";
+import { ExamTimetablesRepository } from "../../../db/repositories/exam-timetables-repository.js";
+import { parseQuery } from "./query.js";
+import {
+  addSearchAgainButton,
+  buildHelpResults,
+  buildTemporarySearchFailureResult,
+} from "./results.js";
+import {
+  searchAnnouncements,
+  searchCalendars,
+  searchTimetables,
+} from "./search.js";
+import {
+  buildAttachmentDeliveryJob,
+  resolveChosenResultAttachments,
+  type ChosenResultDeps,
+} from "./chosen-result.js";
+import { SearchType } from "./search-types.js";
+
+// Production wiring: the selected lookup constructs and uses its repository
+// only when invoked; ignored and malformed result IDs perform no record lookup.
+const chosenResultDeps: ChosenResultDeps = {
+  getAnnouncementById: async id => {
+    const record = await new AnnouncementsRepository(getDb()).getById(id);
+    return record ? AnnouncementsRepository.transformToApi(record) : undefined;
+  },
+  getCalendarById: async id => {
+    const record = await new AcademicCalendarsRepository(getDb()).getById(id);
+    return record
+      ? AcademicCalendarsRepository.transformToApi(record)
+      : undefined;
+  },
+  getTimetableById: async id => {
+    const record = await new ExamTimetablesRepository(getDb()).getById(id);
+    return record ? ExamTimetablesRepository.transformToApi(record) : undefined;
+  },
+};
+
+const _inlineQuery = new Composer<BotContext>();
+
+export const inlineQuery = _inlineQuery.errorBoundary(
+  createComposerErrorBoundary([])
+);
+
+inlineQuery.on("inline_query", async ctx => {
+  const query = ctx.inlineQuery?.query || "";
+  const { type, searchTerm } = parseQuery(query);
+  const chatId = ctx.from?.id;
+
+  let results: InlineQueryResult[] = [];
+
+  try {
+    if (!type) {
+      results = buildHelpResults();
+    } else {
+      switch (type) {
+        case SearchType.ANNOUNCEMENTS:
+          results = await searchAnnouncements(
+            searchTerm,
+            new AnnouncementsRepository(getDb())
+          );
+          break;
+        case SearchType.CALENDARS:
+          results = await searchCalendars(
+            searchTerm,
+            new AcademicCalendarsRepository(getDb())
+          );
+          break;
+        case SearchType.TIMETABLES:
+          results = await searchTimetables(
+            searchTerm,
+            new ExamTimetablesRepository(getDb())
+          );
+          break;
+      }
+
+      results = addSearchAgainButton(results, query);
+    }
+  } catch (error) {
+    logger.error(
+      { err: error, chatId, query, type, searchTerm },
+      "Error in inline query handler"
+    );
+
+    results = buildTemporarySearchFailureResult();
+  }
+
+  try {
+    await ctx.answerInlineQuery(results);
+  } catch (error) {
+    logger.error(
+      { err: error, chatId, query, type, searchTerm },
+      "Failed to answer inline query"
+    );
+  }
+});
+
+inlineQuery.on("chosen_inline_result", async ctx => {
+  const chosenResult = ctx.chosenInlineResult;
+  if (!chosenResult) return;
+
+  const resultId = chosenResult.result_id;
+  const chatId = chosenResult.from.id;
+
+  try {
+    const resolution = await resolveChosenResultAttachments(
+      resultId,
+      chosenResultDeps
+    );
+
+    if (resolution.status === "ignored") return;
+
+    if (resolution.status !== "ready") {
+      await ctx.api.sendMessage(chatId, resolution.message);
+      return;
+    }
+
+    const statusMessage = await ctx.api.sendMessage(
+      chatId,
+      downloading(
+        resolution.attachments.length > 1 ? "files" : "file",
+        resolution.attachments.length > 1
+      ).text
+    );
+
+    await addAttachmentDeliveryJob(
+      buildAttachmentDeliveryJob(
+        chatId,
+        chosenResult.from.id,
+        resolution.attachments,
+        statusMessage.message_id
+      )
+    );
+  } catch (error) {
+    logger.error(
+      { err: error, resultId, chatId },
+      "Error in chosen inline result handler"
+    );
+
+    try {
+      await ctx.api.sendMessage(
+        chatId,
+        problem(
+          "Couldn’t start the download.",
+          "Use /search to find the document again."
+        ).text
+      );
+    } catch (notificationError) {
+      logger.error(
+        { err: notificationError, resultId, chatId },
+        "Failed to notify user about chosen inline result error"
+      );
+    }
+  }
+});

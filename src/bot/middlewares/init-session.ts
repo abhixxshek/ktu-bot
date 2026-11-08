@@ -1,0 +1,27 @@
+import { SessionData } from "../../types/bot.types.js";
+
+export const initSession = (): SessionData => ({
+  announcementSubscriptionMessageId: null,
+  selectedFilters: [],
+  announcementsPage: null,
+  announcementsAnnouncements: [],
+  announcementsMessageId: null,
+  timetablePage: null,
+  timetableTimetables: [],
+  timetableMessageId: null,
+  calendarPage: null,
+  calendarCalendars: [],
+  calendarMessageId: null,
+  syllabusProgramPage: null,
+  syllabusSchemePage: null,
+  syllabusBranchPage: null,
+  syllabusSyllabusPage: null,
+  syllabusPrograms: [],
+  syllabusSchemes: [],
+  syllabusBranches: [],
+  syllabusEntries: [],
+  syllabusSelectedProgramId: null,
+  syllabusSelectedSchemeId: null,
+  syllabusEnqueuedDownloadKey: null,
+  syllabusMessageId: null,
+});

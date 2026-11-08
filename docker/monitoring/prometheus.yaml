@@ -1,0 +1,75 @@
+# Prometheus configuration for KTU Bot.
+# Optional remote_write is appended by docker/monitoring/compose.yaml when
+# PROMETHEUS_REMOTE_WRITE_URL, PROMETHEUS_REMOTE_WRITE_USERNAME, and
+# PROMETHEUS_REMOTE_WRITE_PASSWORD are set.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: "production"
+    cluster: "ktu-bot"
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: "ktu-bot-app"
+    static_configs:
+      - targets: ["ktu-bot-app:3000"]
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: "/metrics"
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "go_.*"
+        action: drop
+
+  - job_name: "announcements-notify-worker"
+    static_configs:
+      - targets: ["announcements-notify-worker:3001"]
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: "/metrics"
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "go_.*"
+        action: drop
+
+  - job_name: "broadcasts-worker"
+    static_configs:
+      - targets: ["broadcasts-worker:3002"]
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: "/metrics"
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "go_.*"
+        action: drop
+
+  - job_name: "data-sync-worker"
+    static_configs:
+      - targets: ["data-sync-worker:3003"]
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: "/metrics"
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "go_.*"
+        action: drop
+
+  - job_name: "attachment-delivery-worker"
+    static_configs:
+      - targets: ["attachment-delivery-worker:3004"]
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: "/metrics"
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "go_.*"
+        action: drop
+
+# Storage configuration:
+# - Retention: 30 days, configured in docker/monitoring/compose.yaml.
+# - Path: /prometheus, mounted as a Docker volume.

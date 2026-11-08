@@ -1,0 +1,22 @@
+# Development image - includes all dependencies and source code for hot reloading.
+# Docker Compose overrides the CMD per service as needed.
+
+FROM node:24-alpine
+
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable
+
+# curl is used by Docker Compose healthchecks.
+RUN apk add --no-cache curl
+
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml ./
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install
+
+COPY . .
+
+EXPOSE 3000
+
+CMD ["pnpm", "dev:watch"]
