@@ -1,5 +1,11 @@
 .env
+*.env
 node_modules/
+**/node_modules/
 dist/
+**/dist/
+*.tsbuildinfo
+storage/posters/*
+!storage/posters/.gitkeep
 serviceAccountKey.json
 testing/
