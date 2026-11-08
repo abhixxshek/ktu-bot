@@ -1,3 +1,6 @@
 packages:
   - "."
   - "web-app"
+
+allowBuilds:
+  esbuild: true
