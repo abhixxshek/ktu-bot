@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { handle } from "hono/vercel";
+import { streamSSE } from "hono/streaming";
 import { BTECH_CATEGORIES } from "../src/db/schema/poster-platform.js";
 import {
   CATEGORY_METADATA,
@@ -455,6 +456,12 @@ app.get("/templates/:id", c => {
 
 app.get("/announcements", async c => {
   const items = await fetchLatestAnnouncements();
+  c.header(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate, proxy-revalidate"
+  );
+  c.header("Pragma", "no-cache");
+  c.header("Expires", "0");
   return c.json({
     items,
     pagination: {
@@ -465,6 +472,43 @@ app.get("/announcements", async c => {
     },
     source: "ktu-live-sync",
     syncedAt: new Date().toISOString(),
+  });
+});
+
+app.get("/announcements/stream", c => {
+  c.header("Cache-Control", "no-cache");
+  c.header("Connection", "keep-alive");
+  return streamSSE(c, async stream => {
+    const items = await fetchLatestAnnouncements();
+    await stream.writeSSE({
+      data: JSON.stringify({ items, syncedAt: new Date().toISOString() }),
+      event: "sync",
+      id: String(Date.now()),
+    });
+
+    const timer = setInterval(() => {
+      void stream
+        .writeSSE({
+          data: JSON.stringify({ ping: Date.now() }),
+          event: "ping",
+        })
+        .catch(() => {
+          clearInterval(timer);
+        });
+    }, 15000);
+
+    stream.onAbort(() => {
+      clearInterval(timer);
+    });
+  });
+});
+
+app.get("/cron/sync-announcements", async c => {
+  const items = await fetchLatestAnnouncements();
+  return c.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    total: items.length,
   });
 });
 
