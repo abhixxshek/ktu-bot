@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 
+try {
+  process.loadEnvFile?.();
+} catch {
+  // Silent catch when .env file is not present on disk
+}
+
 const dbConfigSchema = z
   .object({
     DATABASE_URI: z.string(),

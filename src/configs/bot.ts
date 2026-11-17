@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+try {
+  process.loadEnvFile?.();
+} catch {
+  // Silent catch when .env file is not present on disk
+}
+
 const availableDeploymentTypes = {
   LONG_POLLING: "LONG_POLLING",
   WEBHOOK: "WEBHOOK",
