@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   LayoutDashboard,
   Bell,
@@ -26,6 +26,9 @@ import {
   VolumeX,
   Play,
   Pause,
+  Upload,
+  X,
+  Check,
 } from "lucide-react";
 
 // ============================================================================
@@ -600,17 +603,11 @@ export default function App() {
   const [customCategory, setCustomCategory] = useState<BTechCategory>(
     FALLBACK_ANNOUNCEMENTS[0].category
   );
-  const [customDeadline, setCustomDeadline] = useState<string>(
-    FALLBACK_ANNOUNCEMENTS[0].registrationDeadline ?? ""
-  );
   const [customExamDate, setCustomExamDate] = useState<string>(
     FALLBACK_ANNOUNCEMENTS[0].examinationDate ?? ""
   );
   const [customSemester, setCustomSemester] = useState<string>(
     FALLBACK_ANNOUNCEMENTS[0].semester ?? ""
-  );
-  const [customAcademicYear, setCustomAcademicYear] = useState<string>(
-    FALLBACK_ANNOUNCEMENTS[0].academicYear ?? ""
   );
   const [customRef, setCustomRef] = useState<string>(
     FALLBACK_ANNOUNCEMENTS[0].officialReference ?? ""
@@ -619,6 +616,27 @@ export default function App() {
   const [textAlign, setTextAlign] = useState<"left" | "center" | "right">("left");
   const [accentOverride, setAccentOverride] = useState<string>("");
   const [showLogo, setShowLogo] = useState<boolean>(true);
+  const [customLogoUrl, setCustomLogoUrl] = useState<string | null>(null);
+  const [customLogoName, setCustomLogoName] = useState<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCustomLogoName(file.name);
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const result = ev.target?.result as string;
+      if (result) setCustomLogoUrl(result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveCustomLogo = () => {
+    setCustomLogoUrl(null);
+    setCustomLogoName(null);
+    if (logoInputRef.current) logoInputRef.current.value = "";
+  };
   const [malayalamSubheading, setMalayalamSubheading] = useState<string>(
     "സാങ്കേതിക സർവ്വകലാശാല ബി.ടെക് അറിയിപ്പ്"
   );
@@ -850,10 +868,8 @@ export default function App() {
     setCustomTitle(ann.title);
     setCustomDescription(ann.shortDescription);
     setCustomCategory(ann.category);
-    setCustomDeadline(ann.registrationDeadline ?? "");
     setCustomExamDate(ann.examinationDate ?? "");
     setCustomSemester(ann.semester ?? "");
-    setCustomAcademicYear(ann.academicYear ?? "");
     setCustomRef(ann.officialReference ?? "");
     setAccentOverride("");
     setFontSizeScale(1.0);
@@ -871,186 +887,218 @@ export default function App() {
 
     const accent = accentOverride || currentTemplate.accentColor;
 
-    // Background Fill
-    const grad = ctx.createLinearGradient(0, 0, dims.width, dims.height);
-    if (currentTemplate.id === "bold-exam-alert") {
-      grad.addColorStop(0, "#450A0A");
-      grad.addColorStop(1, "#991B1B");
-    } else if (currentTemplate.id === "results-announcement") {
-      grad.addColorStop(0, "#064E3B");
-      grad.addColorStop(1, "#0D9488");
-    } else if (currentTemplate.id === "registration-reminder") {
-      grad.addColorStop(0, "#1E1B4B");
-      grad.addColorStop(1, "#1E3A8A");
-    } else {
-      grad.addColorStop(0, "#0F172A");
-      grad.addColorStop(1, "#1E293B");
-    }
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, dims.width, dims.height);
-
-    // Inner Card
-    const pad = selectedFormat === "landscape" ? 44 : 64;
-    const cardW = dims.width - pad * 2;
-    const cardH = dims.height - pad * 2;
-    ctx.fillStyle = currentTemplate.cardBg;
-    ctx.beginPath();
-    ctx.roundRect(pad, pad, cardW, cardH, 36);
-    ctx.fill();
-
-    // Category Pill
-    const innerX = pad + 56;
-    let cursorY = pad + 68;
-    ctx.fillStyle = currentTemplate.badgeBg;
-    ctx.beginPath();
-    ctx.roundRect(innerX, cursorY, 440, 52, 26);
-    ctx.fill();
-
-    ctx.fillStyle = currentTemplate.badgeText;
-    ctx.font = "bold 20px Inter, sans-serif";
-    ctx.fillText(customCategory.toUpperCase(), innerX + 24, cursorY + 33);
-
-    // KTU Brand Crest
-    if (showLogo) {
-      ctx.fillStyle = accent;
-      ctx.beginPath();
-      ctx.roundRect(pad + cardW - 140, cursorY, 84, 52, 14);
-      ctx.fill();
-      ctx.fillStyle = "#FFFFFF";
-      ctx.font = "bold 22px Inter, sans-serif";
-      ctx.fillText("KTU", pad + cardW - 118, cursorY + 34);
-    }
-
-    // Malayalam Subheading
-    cursorY += 105;
-    if (malayalamSubheading.trim()) {
-      ctx.fillStyle = accent;
-      ctx.font = "600 24px 'Noto Sans Malayalam', Inter, sans-serif";
-      ctx.fillText(malayalamSubheading, innerX, cursorY);
-      cursorY += 48;
-    }
-
-    // Adaptive Title
-    const maxTextWidth = cardW - 112;
-    const baseTitleSize =
-      selectedFormat === "landscape" ? 36 : customTitle.length > 110 ? 44 : 52;
-    const finalTitleSize = Math.round(baseTitleSize * fontSizeScale);
-    ctx.fillStyle = currentTemplate.primaryText;
-    ctx.font = `800 ${finalTitleSize}px 'Plus Jakarta Sans', Inter, sans-serif`;
-
-    const words = customTitle.split(" ");
-    let line = "";
-    const lines: string[] = [];
-    for (const word of words) {
-      const testLine = line ? `${line} ${word}` : word;
-      if (ctx.measureText(testLine).width > maxTextWidth) {
-        lines.push(line);
-        line = word;
+    const renderPosterContent = (logoImg?: HTMLImageElement) => {
+      // Background Fill
+      const grad = ctx.createLinearGradient(0, 0, dims.width, dims.height);
+      if (currentTemplate.id === "bold-exam-alert") {
+        grad.addColorStop(0, "#450A0A");
+        grad.addColorStop(1, "#991B1B");
+      } else if (currentTemplate.id === "results-announcement") {
+        grad.addColorStop(0, "#064E3B");
+        grad.addColorStop(1, "#0D9488");
+      } else if (currentTemplate.id === "registration-reminder") {
+        grad.addColorStop(0, "#1E1B4B");
+        grad.addColorStop(1, "#1E3A8A");
       } else {
-        line = testLine;
+        grad.addColorStop(0, "#0F172A");
+        grad.addColorStop(1, "#1E293B");
       }
-    }
-    if (line) lines.push(line);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, dims.width, dims.height);
 
-    lines.slice(0, 5).forEach(l => {
-      ctx.fillText(l, innerX, cursorY);
-      cursorY += finalTitleSize * 1.28;
-    });
-
-    // Description
-    cursorY += 16;
-    ctx.fillStyle = currentTemplate.secondaryText;
-    ctx.font = "500 26px Inter, sans-serif";
-    const descWords = customDescription.split(" ");
-    let dLine = "";
-    const dLines: string[] = [];
-    for (const w of descWords) {
-      const test = dLine ? `${dLine} ${w}` : w;
-      if (ctx.measureText(test).width > maxTextWidth) {
-        dLines.push(dLine);
-        dLine = w;
-      } else {
-        dLine = test;
-      }
-    }
-    if (dLine) dLines.push(dLine);
-    dLines.slice(0, 3).forEach(dl => {
-      ctx.fillText(dl, innerX, cursorY);
-      cursorY += 38;
-    });
-
-    // Fact-Only Badges
-    cursorY += 32;
-    const pills: Array<{ label: string; value: string }> = [];
-    if (customSemester) pills.push({ label: "SEMESTER", value: customSemester });
-    if (customAcademicYear)
-      pills.push({ label: "ACADEMIC YEAR", value: customAcademicYear });
-    if (customDeadline) pills.push({ label: "DEADLINE", value: customDeadline });
-    if (customExamDate) pills.push({ label: "EXAM DATE", value: customExamDate });
-    if (customRef) pills.push({ label: "KTU REF", value: customRef });
-
-    let pillX = innerX;
-    pills.forEach(p => {
-      const pillW = Math.max(210, p.value.length * 16 + 48);
-      if (pillX + pillW > pad + cardW - 56) {
-        pillX = innerX;
-        cursorY += 96;
-      }
-      ctx.fillStyle = "rgba(148, 163, 184, 0.16)";
+      // Inner Card
+      const pad = selectedFormat === "landscape" ? 44 : 64;
+      const cardW = dims.width - pad * 2;
+      const cardH = dims.height - pad * 2;
+      ctx.fillStyle = currentTemplate.cardBg;
       ctx.beginPath();
-      ctx.roundRect(pillX, cursorY, pillW, 78, 16);
+      ctx.roundRect(pad, pad, cardW, cardH, 36);
       ctx.fill();
 
-      ctx.fillStyle = accent;
-      ctx.fillRect(pillX, cursorY, 6, 78);
+      // Category Pill
+      const innerX = pad + 56;
+      let cursorY = pad + 68;
+      ctx.fillStyle = currentTemplate.badgeBg;
+      ctx.beginPath();
+      ctx.roundRect(innerX, cursorY, 440, 52, 26);
+      ctx.fill();
 
-      ctx.fillStyle = currentTemplate.secondaryText;
-      ctx.font = "bold 14px Inter, sans-serif";
-      ctx.fillText(p.label, pillX + 20, cursorY + 28);
+      ctx.fillStyle = currentTemplate.badgeText;
+      ctx.font = "bold 20px Inter, sans-serif";
+      ctx.fillText(customCategory.toUpperCase(), innerX + 24, cursorY + 33);
 
+      // Brand Crest or Custom Uploaded Logo
+      if (showLogo) {
+        if (logoImg) {
+          const maxW = 160;
+          const maxH = 60;
+          const aspect = logoImg.width / (logoImg.height || 1);
+          let w = maxH * aspect;
+          let h = maxH;
+          if (w > maxW) {
+            w = maxW;
+            h = maxW / aspect;
+          }
+          const logoX = pad + cardW - w - 24;
+          const logoY = cursorY - 4;
+          ctx.drawImage(logoImg, logoX, logoY, w, h);
+        } else {
+          ctx.fillStyle = accent;
+          ctx.beginPath();
+          ctx.roundRect(pad + cardW - 140, cursorY, 84, 52, 14);
+          ctx.fill();
+          ctx.fillStyle = "#FFFFFF";
+          ctx.font = "bold 22px Inter, sans-serif";
+          ctx.fillText("KTU", pad + cardW - 118, cursorY + 34);
+        }
+      }
+
+      // Malayalam Subheading
+      cursorY += 105;
+      if (malayalamSubheading.trim()) {
+        ctx.fillStyle = accent;
+        ctx.font = "600 24px 'Noto Sans Malayalam', Inter, sans-serif";
+        ctx.fillText(malayalamSubheading, innerX, cursorY);
+        cursorY += 48;
+      }
+
+      // Adaptive Title
+      const maxTextWidth = cardW - 112;
+      const baseTitleSize =
+        selectedFormat === "landscape" ? 38 : customTitle.length > 110 ? 46 : 54;
+      const finalTitleSize = Math.round(baseTitleSize * fontSizeScale);
       ctx.fillStyle = currentTemplate.primaryText;
-      ctx.font = "bold 22px Inter, sans-serif";
-      ctx.fillText(p.value, pillX + 20, cursorY + 58);
+      ctx.font = `800 ${finalTitleSize}px 'Plus Jakarta Sans', Inter, sans-serif`;
 
-      pillX += pillW + 18;
-    });
+      const words = customTitle.split(" ");
+      let line = "";
+      const lines: string[] = [];
+      for (const word of words) {
+        const testLine = line ? `${line} ${word}` : word;
+        if (ctx.measureText(testLine).width > maxTextWidth) {
+          lines.push(line);
+          line = word;
+        } else {
+          line = testLine;
+        }
+      }
+      if (line) lines.push(line);
 
-    // Footer
-    const footerY = pad + cardH - 44;
-    ctx.fillStyle = currentTemplate.secondaryText;
-    ctx.font = "600 18px Inter, sans-serif";
-    ctx.fillText(
-      `Published: ${currentAnnouncement.publishedDate} • Official Source: ktu.edu.in`,
-      innerX,
-      footerY
-    );
+      lines.slice(0, 5).forEach(l => {
+        ctx.fillText(l, innerX, cursorY);
+        cursorY += finalTitleSize * 1.28;
+      });
 
-    const mimeType = format === "jpeg" ? "image/jpeg" : "image/png";
-    const dataUrl = canvas.toDataURL(mimeType, 0.95);
+      // Description (Prominent, High-Legibility Font Size)
+      cursorY += 24;
+      ctx.fillStyle = currentTemplate.secondaryText;
+      const descFontSize = selectedFormat === "landscape" ? 32 : 38;
+      const descLineHeight = Math.round(descFontSize * 1.4);
+      ctx.font = `500 ${descFontSize}px 'Plus Jakarta Sans', Inter, sans-serif`;
+      const descWords = customDescription.split(" ");
+      let dLine = "";
+      const dLines: string[] = [];
+      for (const w of descWords) {
+        const test = dLine ? `${dLine} ${w}` : w;
+        if (ctx.measureText(test).width > maxTextWidth) {
+          dLines.push(dLine);
+          dLine = w;
+        } else {
+          dLine = test;
+        }
+      }
+      if (dLine) dLines.push(dLine);
+      dLines.slice(0, 4).forEach(dl => {
+        ctx.fillText(dl, innerX, cursorY);
+        cursorY += descLineHeight;
+      });
 
-    const link = document.createElement("a");
-    link.download = `KTU-BTech-${currentAnnouncement.id}-${selectedFormat}.${format}`;
-    link.href = dataUrl;
-    link.click();
+      // Fact-Only Badges (Semester, Exam Date, KTU Reference Only - No Deadline, No Academic Year)
+      cursorY += 36;
+      const pills: Array<{ label: string; value: string }> = [];
+      if (customSemester) pills.push({ label: "SEMESTER", value: customSemester });
+      if (customExamDate) pills.push({ label: "EXAM DATE", value: customExamDate });
+      if (customRef) pills.push({ label: "KTU REF", value: customRef });
 
-    const newRecord: GeneratedPosterHistoryItem = {
-      id: `POSTER-${Date.now()}`,
-      announcementId: currentAnnouncement.id,
-      announcementTitle: customTitle,
-      category: customCategory,
-      templateId: currentTemplate.id,
-      formatKey: selectedFormat,
-      exportFormat: format,
-      dataUrl,
-      createdAt: new Date().toLocaleTimeString(),
-      mode: "Manual Studio",
+      let pillX = innerX;
+      pills.forEach(p => {
+        const pillW = Math.max(220, p.value.length * 17 + 56);
+        if (pillX + pillW > pad + cardW - 56) {
+          pillX = innerX;
+          cursorY += 104;
+        }
+        ctx.fillStyle = "rgba(15, 23, 42, 0.4)";
+        ctx.beginPath();
+        ctx.roundRect(pillX, cursorY, pillW, 82, 18);
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(pillX, cursorY, pillW, 82, 18);
+        ctx.stroke();
+
+        ctx.fillStyle = accent;
+        ctx.fillRect(pillX, cursorY, 6, 82);
+
+        ctx.fillStyle = "rgba(203, 213, 225, 0.8)";
+        ctx.font = "bold 13px Inter, sans-serif";
+        ctx.fillText(p.label, pillX + 22, cursorY + 28);
+
+        ctx.fillStyle = "#FFFFFF";
+        ctx.font = "800 22px 'Plus Jakarta Sans', Inter, sans-serif";
+        ctx.fillText(p.value, pillX + 22, cursorY + 60);
+
+        pillX += pillW + 20;
+      });
+
+      // Footer
+      const footerY = pad + cardH - 44;
+      ctx.fillStyle = currentTemplate.secondaryText;
+      ctx.font = "600 18px Inter, sans-serif";
+      ctx.fillText(
+        `Published: ${currentAnnouncement.publishedDate} • Official Source: ktu.edu.in`,
+        innerX,
+        footerY
+      );
+
+      const mimeType = format === "jpeg" ? "image/jpeg" : "image/png";
+      const dataUrl = canvas.toDataURL(mimeType, 0.95);
+
+      const link = document.createElement("a");
+      link.download = `KTU-BTech-${currentAnnouncement.id}-${selectedFormat}.${format}`;
+      link.href = dataUrl;
+      link.click();
+
+      const newRecord: GeneratedPosterHistoryItem = {
+        id: `POSTER-${Date.now()}`,
+        announcementId: currentAnnouncement.id,
+        announcementTitle: customTitle,
+        category: customCategory,
+        templateId: currentTemplate.id,
+        formatKey: selectedFormat,
+        exportFormat: format,
+        dataUrl,
+        createdAt: new Date().toLocaleTimeString(),
+        mode: "Manual Studio",
+      };
+      setGeneratedHistory(prev => [newRecord, ...prev]);
+      setAnnouncements(prev =>
+        prev.map(a =>
+          a.id === currentAnnouncement.id ? { ...a, posterStatus: "generated" } : a
+        )
+      );
     };
-    setGeneratedHistory(prev => [newRecord, ...prev]);
-    setAnnouncements(prev =>
-      prev.map(a =>
-        a.id === currentAnnouncement.id ? { ...a, posterStatus: "generated" } : a
-      )
-    );
+
+    if (showLogo && customLogoUrl) {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => renderPosterContent(img);
+      img.onerror = () => renderPosterContent();
+      img.src = customLogoUrl;
+    } else {
+      renderPosterContent();
+    }
   };
 
   // Trigger Live KTU Sync
@@ -1683,45 +1731,164 @@ export default function App() {
                   </select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                {/* Section 1: Announcement & Template Selection */}
+                <div className="space-y-4">
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-slate-300">
-                      2. Predefined Template
+                      1. Select Official KTU B.Tech Announcement
                     </label>
                     <select
-                      value={selectedTemplateId}
-                      onChange={e => setSelectedTemplateId(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white"
+                      value={selectedAnnouncementId}
+                      onChange={e => {
+                        const found = announcements.find(
+                          a => a.id === Number(e.target.value)
+                        );
+                        if (found) openAnnouncementInStudio(found);
+                      }}
+                      className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500"
                     >
-                      {TEMPLATE_LIBRARY.map(t => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
+                      {announcements.map(a => (
+                        <option key={a.id} value={a.id}>
+                          [{a.publishedDate}] {a.title.slice(0, 68)}...
                         </option>
                       ))}
                     </select>
                   </div>
 
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <label className="text-xs font-semibold text-slate-300">
-                      3. Poster Format
+                      2. Choose Design Template
                     </label>
-                    <select
-                      value={selectedFormat}
-                      onChange={e =>
-                        setSelectedFormat(e.target.value as PosterFormatKey)
-                      }
-                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white"
-                    >
-                      {Object.entries(POSTER_FORMATS).map(([k, v]) => (
-                        <option key={k} value={k}>
-                          {v.label} ({v.width}×{v.height})
-                        </option>
-                      ))}
-                    </select>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {TEMPLATE_LIBRARY.map(t => {
+                        const isSelected = selectedTemplateId === t.id;
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => setSelectedTemplateId(t.id)}
+                            className={`p-3 rounded-xl border text-left transition flex items-center justify-between gap-2 ${
+                              isSelected
+                                ? "bg-indigo-600/20 border-indigo-500 ring-2 ring-indigo-500/40 text-white shadow-md shadow-indigo-500/10"
+                                : "bg-slate-950/70 border-slate-800 hover:border-slate-700 text-slate-300"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div
+                                style={{ background: t.accentColor }}
+                                className="w-3.5 h-3.5 rounded-full shrink-0 shadow-sm"
+                              />
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold truncate">{t.name}</div>
+                              </div>
+                            </div>
+                            {isSelected && (
+                              <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-slate-300">
+                      3. Poster Aspect Ratio &amp; Format
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {Object.entries(POSTER_FORMATS).map(([k, v]) => {
+                        const isSelected = selectedFormat === k;
+                        return (
+                          <button
+                            key={k}
+                            type="button"
+                            onClick={() => setSelectedFormat(k as PosterFormatKey)}
+                            className={`py-2 px-2.5 rounded-xl border text-center transition ${
+                              isSelected
+                                ? "bg-indigo-600 border-indigo-500 text-white font-bold shadow-md shadow-indigo-600/25"
+                                : "bg-slate-950/70 border-slate-800 hover:border-slate-700 text-slate-400"
+                            }`}
+                          >
+                            <div className="text-[11px] font-bold">{v.label}</div>
+                            <div className="text-[9px] opacity-70">{v.ratioLabel}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 
-                <div className="space-y-3 pt-2 border-t border-slate-800">
+                {/* Section 2: Branding & Custom Logo Upload */}
+                <div className="space-y-3 pt-3 border-t border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-300">
+                      Branding &amp; Logo
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowLogo(!showLogo)}
+                      className={`px-2.5 py-1 rounded-lg text-xs border font-medium transition ${
+                        showLogo
+                          ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                          : "bg-slate-950 border-slate-800 text-slate-400"
+                      }`}
+                    >
+                      {showLogo ? "Logo Visible" : "Logo Hidden"}
+                    </button>
+                  </div>
+
+                  {showLogo && (
+                    <div className="space-y-2">
+                      <input
+                        type="file"
+                        ref={logoInputRef}
+                        accept="image/*"
+                        onChange={handleLogoUpload}
+                        className="hidden"
+                      />
+
+                      {customLogoUrl ? (
+                        <div className="p-3 rounded-xl bg-slate-950 border border-indigo-500/40 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <img
+                              src={customLogoUrl}
+                              alt="Custom logo"
+                              className="w-10 h-10 object-contain rounded-lg bg-slate-900 p-1 border border-slate-800"
+                            />
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold text-white truncate">
+                                {customLogoName || "Custom Logo Active"}
+                              </div>
+                              <div className="text-[10px] text-emerald-400 font-medium">
+                                Applied to preview &amp; exports
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleRemoveCustomLogo}
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950 hover:text-rose-400 text-slate-400 transition"
+                            title="Remove custom logo"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => logoInputRef.current?.click()}
+                          className="w-full py-2.5 px-3 rounded-xl border border-dashed border-slate-700 hover:border-indigo-500 bg-slate-950/70 text-xs text-slate-300 flex items-center justify-center gap-2 transition group"
+                        >
+                          <Upload className="w-3.5 h-3.5 text-indigo-400 group-hover:scale-110 transition" />
+                          <span>Upload Custom Logo (College / Club / Dept)</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Section 3: Announcement Text Content */}
+                <div className="space-y-3 pt-3 border-t border-slate-800">
                   <div>
                     <label className="text-xs font-semibold text-slate-300">
                       Main Heading (Title)
@@ -1730,7 +1897,7 @@ export default function App() {
                       rows={2}
                       value={customTitle}
                       onChange={e => setCustomTitle(e.target.value)}
-                      className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white"
+                      className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500"
                     />
                   </div>
 
@@ -1742,74 +1909,74 @@ export default function App() {
                       type="text"
                       value={malayalamSubheading}
                       onChange={e => setMalayalamSubheading(e.target.value)}
-                      className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white"
+                      className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500"
                     />
                   </div>
 
                   <div>
-                    <label className="text-xs font-semibold text-slate-300">
-                      Extracted Summary / Instructions
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-300">
+                        Description / Announcement Summary
+                      </label>
+                      <span className="text-[10px] text-indigo-400 font-medium">
+                        Rendered in large, high-legibility type
+                      </span>
+                    </div>
                     <textarea
                       rows={3}
                       value={customDescription}
                       onChange={e => setCustomDescription(e.target.value)}
-                      className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white"
+                      className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500"
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[11px] text-slate-400">
-                        Semester (Empty = Hidden)
-                      </label>
-                      <input
-                        type="text"
-                        value={customSemester}
-                        onChange={e => setCustomSemester(e.target.value)}
-                        placeholder="Not in source"
-                        className="w-full mt-1 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white"
-                      />
+                  {/* Section 4: Metadata Fields (Zero Fake Boxes: Only Genuine Facts) */}
+                  <div className="space-y-2 pt-1">
+                    <label className="text-xs font-semibold text-slate-300">
+                      Official Metadata Details
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] text-slate-400">
+                          Semester
+                        </label>
+                        <input
+                          type="text"
+                          value={customSemester}
+                          onChange={e => setCustomSemester(e.target.value)}
+                          placeholder="e.g. S5"
+                          className="w-full mt-1 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-slate-400">
+                          Exam Date
+                        </label>
+                        <input
+                          type="text"
+                          value={customExamDate}
+                          onChange={e => setCustomExamDate(e.target.value)}
+                          placeholder="e.g. 24-11-2026"
+                          className="w-full mt-1 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white"
+                        />
+                      </div>
                     </div>
                     <div>
                       <label className="text-[11px] text-slate-400">
-                        Academic Year
+                        KTU Reference Number
                       </label>
                       <input
                         type="text"
-                        value={customAcademicYear}
-                        onChange={e => setCustomAcademicYear(e.target.value)}
-                        placeholder="Not in source"
-                        className="w-full mt-1 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-slate-400">
-                        Last Date / Deadline
-                      </label>
-                      <input
-                        type="text"
-                        value={customDeadline}
-                        onChange={e => setCustomDeadline(e.target.value)}
-                        placeholder="Not in source"
-                        className="w-full mt-1 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-slate-400">
-                        Exam Date
-                      </label>
-                      <input
-                        type="text"
-                        value={customExamDate}
-                        onChange={e => setCustomExamDate(e.target.value)}
-                        placeholder="Not in source"
+                        value={customRef}
+                        onChange={e => setCustomRef(e.target.value)}
+                        placeholder="e.g. KTU/EX-II#1/5552/2026"
                         className="w-full mt-1 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white"
                       />
                     </div>
                   </div>
                 </div>
 
+                {/* Section 5: Typography & Appearance */}
                 <div className="space-y-3 pt-3 border-t border-slate-800">
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-slate-300 font-medium">
@@ -1828,12 +1995,13 @@ export default function App() {
 
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-slate-300 font-medium">
-                      Alignment &amp; Crest
+                      Text Alignment
                     </span>
                     <div className="flex items-center gap-1.5">
                       {(["left", "center", "right"] as const).map(al => (
                         <button
                           key={al}
+                          type="button"
                           onClick={() => setTextAlign(al)}
                           className={`p-1.5 rounded-lg border ${
                             textAlign === al
@@ -1848,22 +2016,13 @@ export default function App() {
                           {al === "right" && <AlignRight className="w-3.5 h-3.5" />}
                         </button>
                       ))}
-                      <button
-                        onClick={() => setShowLogo(!showLogo)}
-                        className={`px-2.5 py-1 rounded-lg text-xs border ${
-                          showLogo
-                            ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
-                            : "bg-slate-950 border-slate-800 text-slate-400"
-                        }`}
-                      >
-                        KTU Logo
-                      </button>
                     </div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 pt-3">
                   <button
+                    type="button"
                     onClick={() => exportHighResPoster("png")}
                     className="py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 transition"
                   >
@@ -1871,6 +2030,7 @@ export default function App() {
                     Export PNG (High-Res)
                   </button>
                   <button
+                    type="button"
                     onClick={() => exportHighResPoster("jpeg")}
                     className="py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-2 border border-slate-700 transition"
                   >
@@ -1893,7 +2053,7 @@ export default function App() {
 
                 <div
                   style={{ background: currentTemplate.bgGradient }}
-                  className={`w-full max-w-[540px] rounded-3xl p-7 shadow-2xl border border-white/10 transition-all flex flex-col justify-between ${
+                  className={`w-full max-w-[560px] rounded-3xl p-8 shadow-2xl border border-white/10 transition-all flex flex-col justify-between ${
                     selectedFormat === "instagram_story"
                       ? "aspect-[9/16]"
                       : selectedFormat === "square_post"
@@ -1910,43 +2070,53 @@ export default function App() {
                       borderColor: currentTemplate.borderColor,
                       textAlign,
                     }}
-                    className="w-full h-full rounded-2xl p-6 border flex flex-col justify-between shadow-xl overflow-hidden"
+                    className="w-full h-full rounded-2xl p-7 border flex flex-col justify-between shadow-2xl overflow-hidden"
                   >
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center justify-between gap-3">
                       <span
                         style={{
                           backgroundColor: currentTemplate.badgeBg,
                           color: currentTemplate.badgeText,
                         }}
-                        className="px-3.5 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider"
+                        className="px-4 py-1.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider shadow-sm"
                       >
                         {customCategory}
                       </span>
                       {showLogo && (
-                        <div className="flex items-center gap-2">
-                          <div
-                            style={{
-                              backgroundColor:
-                                accentOverride || currentTemplate.accentColor,
-                            }}
-                            className="w-7 h-7 rounded-lg text-white font-black text-xs flex items-center justify-center"
-                          >
-                            KTU
-                          </div>
-                          <span className="text-xs font-bold opacity-80">
-                            B.Tech Official
-                          </span>
+                        <div className="flex items-center gap-2.5">
+                          {customLogoUrl ? (
+                            <img
+                              src={customLogoUrl}
+                              alt="Custom Logo"
+                              className="h-10 w-auto max-w-[140px] object-contain rounded-lg drop-shadow"
+                            />
+                          ) : (
+                            <>
+                              <div
+                                style={{
+                                  backgroundColor:
+                                    accentOverride || currentTemplate.accentColor,
+                                }}
+                                className="w-8 h-8 rounded-lg text-white font-black text-xs flex items-center justify-center shadow-md"
+                              >
+                                KTU
+                              </div>
+                              <span className="text-xs font-bold opacity-80">
+                                B.Tech Official
+                              </span>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
 
-                    <div className="my-auto space-y-3 py-3">
+                    <div className="my-auto space-y-4 py-4">
                       {malayalamSubheading && (
                         <div
                           style={{
                             color: accentOverride || currentTemplate.accentColor,
                           }}
-                          className="text-xs font-bold tracking-wide"
+                          className="text-xs sm:text-sm font-semibold tracking-wide"
                         >
                           {malayalamSubheading}
                         </div>
@@ -1962,7 +2132,7 @@ export default function App() {
                               ? "right"
                               : "left",
                         }}
-                        className={`font-extrabold tracking-tight line-clamp-4 ${AdaptiveTitleClass}`}
+                        className={`font-black tracking-tight line-clamp-4 ${AdaptiveTitleClass}`}
                       >
                         {customTitle}
                       </h2>
@@ -1970,14 +2140,15 @@ export default function App() {
                       {customDescription && (
                         <p
                           style={{ color: currentTemplate.secondaryText }}
-                          className="text-xs leading-relaxed line-clamp-3 font-medium"
+                          className="text-sm sm:text-base md:text-lg leading-relaxed line-clamp-4 font-semibold text-slate-100/95 my-3"
                         >
                           {customDescription}
                         </p>
                       )}
 
+                      {/* Fact-Only Badges (No Deadline, No Academic Year) */}
                       <div
-                        className={`flex flex-wrap gap-2 pt-2 ${
+                        className={`flex flex-wrap gap-3 pt-2 ${
                           textAlign === "center"
                             ? "justify-center"
                             : textAlign === "right"
@@ -1986,66 +2157,40 @@ export default function App() {
                         }`}
                       >
                         {customSemester && (
-                          <div
-                            style={{
-                              borderLeftColor:
-                                accentOverride || currentTemplate.accentColor,
-                            }}
-                            className="px-3 py-1.5 rounded-lg bg-slate-500/10 border-l-4 text-left"
-                          >
-                            <div className="text-[9px] uppercase font-bold opacity-60">
+                          <div className="px-4 py-2 rounded-xl bg-slate-900/60 backdrop-blur border border-white/10 shadow-sm text-left">
+                            <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
                               Semester
                             </div>
-                            <div className="text-xs font-extrabold">
+                            <div className="text-xs sm:text-sm font-extrabold text-white mt-0.5">
                               {customSemester}
-                            </div>
-                          </div>
-                        )}
-                        {customAcademicYear && (
-                          <div
-                            style={{
-                              borderLeftColor:
-                                accentOverride || currentTemplate.accentColor,
-                            }}
-                            className="px-3 py-1.5 rounded-lg bg-slate-500/10 border-l-4 text-left"
-                          >
-                            <div className="text-[9px] uppercase font-bold opacity-60">
-                              Academic Year
-                            </div>
-                            <div className="text-xs font-extrabold">
-                              {customAcademicYear}
-                            </div>
-                          </div>
-                        )}
-                        {customDeadline && (
-                          <div
-                            style={{
-                              borderLeftColor:
-                                accentOverride || currentTemplate.accentColor,
-                            }}
-                            className="px-3 py-1.5 rounded-lg bg-amber-500/15 border-l-4 text-left"
-                          >
-                            <div className="text-[9px] uppercase font-bold opacity-75">
-                              Last Date / Deadline
-                            </div>
-                            <div className="text-xs font-extrabold">
-                              {customDeadline}
                             </div>
                           </div>
                         )}
                         {customExamDate && (
                           <div
                             style={{
-                              borderLeftColor:
-                                accentOverride || currentTemplate.accentColor,
+                              borderColor: `${accentOverride || currentTemplate.accentColor}55`,
                             }}
-                            className="px-3 py-1.5 rounded-lg bg-indigo-500/15 border-l-4 text-left"
+                            className="px-4 py-2 rounded-xl bg-slate-900/60 backdrop-blur border shadow-sm text-left"
                           >
-                            <div className="text-[9px] uppercase font-bold opacity-75">
+                            <div
+                              style={{ color: accentOverride || currentTemplate.accentColor }}
+                              className="text-[10px] uppercase font-bold tracking-wider"
+                            >
                               Exam Date
                             </div>
-                            <div className="text-xs font-extrabold">
+                            <div className="text-xs sm:text-sm font-extrabold text-white mt-0.5">
                               {customExamDate}
+                            </div>
+                          </div>
+                        )}
+                        {customRef && (
+                          <div className="px-4 py-2 rounded-xl bg-slate-900/60 backdrop-blur border border-white/10 shadow-sm text-left">
+                            <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
+                              Official Ref
+                            </div>
+                            <div className="text-xs sm:text-sm font-extrabold text-white mt-0.5 font-mono">
+                              {customRef}
                             </div>
                           </div>
                         )}
@@ -2054,7 +2199,7 @@ export default function App() {
 
                     <div
                       style={{ color: currentTemplate.secondaryText }}
-                      className="pt-3 border-t border-slate-500/20 flex items-center justify-between text-[10px] font-semibold"
+                      className="pt-3 border-t border-slate-500/20 flex items-center justify-between text-[11px] font-semibold"
                     >
                       <span>
                         Published: {currentAnnouncement.publishedDate} • ktu.edu.in

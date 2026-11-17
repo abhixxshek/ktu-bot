@@ -21,27 +21,31 @@ export interface SvgExportOptions {
     registrationDeadline?: string | null | undefined;
     examinationDate?: string | null | undefined;
     officialReference?: string | null | undefined;
-    extractedDetails?: {
-      semester?: string | null | undefined;
-      academicYear?: string | null | undefined;
-      registrationDeadline?: string | null | undefined;
-      examinationDate?: string | null | undefined;
-      officialReference?: string | null | undefined;
-    } | undefined;
+    extractedDetails?:
+      | {
+          semester?: string | null | undefined;
+          academicYear?: string | null | undefined;
+          registrationDeadline?: string | null | undefined;
+          examinationDate?: string | null | undefined;
+          officialReference?: string | null | undefined;
+        }
+      | undefined;
   };
-  overrides?: {
-    customTitle?: string | undefined;
-    customSubtitle?: string | undefined;
-    customCategory?: string | undefined;
-    fontSize?: number | undefined;
-    accentColor?: string | undefined;
-    textColor?: string | undefined;
-    customSemester?: string | undefined;
-    customAcademicYear?: string | undefined;
-    customDeadline?: string | undefined;
-    customExamDate?: string | undefined;
-    customRef?: string | undefined;
-  } | undefined;
+  overrides?:
+    | {
+        customTitle?: string | undefined;
+        customSubtitle?: string | undefined;
+        customCategory?: string | undefined;
+        fontSize?: number | undefined;
+        accentColor?: string | undefined;
+        textColor?: string | undefined;
+        customSemester?: string | undefined;
+        customAcademicYear?: string | undefined;
+        customDeadline?: string | undefined;
+        customExamDate?: string | undefined;
+        customRef?: string | undefined;
+      }
+    | undefined;
 }
 
 export interface ExportResult {
@@ -117,17 +121,38 @@ export function renderPosterSvg(options: SvgExportOptions): string {
   const tokens = template.designTokens;
 
   const title = overrides?.customTitle || announcement.title;
-  const subtitle = overrides?.customSubtitle || announcement.shortDescription || "";
+  const subtitle =
+    overrides?.customSubtitle || announcement.shortDescription || "";
   const category = overrides?.customCategory || announcement.category;
   const publishedDate = announcement.publishedDate;
 
   // Zero-fabrication details: only include non-empty values
   const details = announcement.extractedDetails;
-  const semester = overrides?.customSemester ?? details?.semester ?? announcement.semester ?? undefined;
-  const academicYear = overrides?.customAcademicYear ?? details?.academicYear ?? announcement.academicYear ?? undefined;
-  const deadline = overrides?.customDeadline ?? details?.registrationDeadline ?? announcement.registrationDeadline ?? undefined;
-  const examDate = overrides?.customExamDate ?? details?.examinationDate ?? announcement.examinationDate ?? undefined;
-  const refNo = overrides?.customRef ?? details?.officialReference ?? announcement.officialReference ?? undefined;
+  const semester =
+    overrides?.customSemester ??
+    details?.semester ??
+    announcement.semester ??
+    undefined;
+  const academicYear =
+    overrides?.customAcademicYear ??
+    details?.academicYear ??
+    announcement.academicYear ??
+    undefined;
+  const deadline =
+    overrides?.customDeadline ??
+    details?.registrationDeadline ??
+    announcement.registrationDeadline ??
+    undefined;
+  const examDate =
+    overrides?.customExamDate ??
+    details?.examinationDate ??
+    announcement.examinationDate ??
+    undefined;
+  const refNo =
+    overrides?.customRef ??
+    details?.officialReference ??
+    announcement.officialReference ??
+    undefined;
 
   const accentColor = overrides?.accentColor || tokens.accentColor;
   const primaryTextColor = overrides?.textColor || tokens.primaryText;
@@ -145,10 +170,12 @@ export function renderPosterSvg(options: SvgExportOptions): string {
   const titleLines = wrapSvgText(title, maxTitleChars);
 
   // Subtitle wrapping
-  const subtitleFontSize = format === "landscape" ? 22 : 26;
-  const subtitleLineHeight = Math.round(subtitleFontSize * 1.35);
+  const subtitleFontSize = format === "landscape" ? 28 : 34;
+  const subtitleLineHeight = Math.round(subtitleFontSize * 1.38);
   const maxSubtitleChars = format === "landscape" ? 65 : 45;
-  const subtitleLines = subtitle ? wrapSvgText(subtitle, maxSubtitleChars).slice(0, 4) : [];
+  const subtitleLines = subtitle
+    ? wrapSvgText(subtitle, maxSubtitleChars).slice(0, 4)
+    : [];
 
   // Card bounding box
   const cardMargin = format === "landscape" ? 48 : 56;
@@ -162,7 +189,8 @@ export function renderPosterSvg(options: SvgExportOptions): string {
   // Fact-only metadata badges
   const badges: Array<{ label: string; value: string }> = [];
   if (semester) badges.push({ label: "SEMESTER", value: semester });
-  if (academicYear) badges.push({ label: "ACADEMIC YEAR", value: academicYear });
+  if (academicYear)
+    badges.push({ label: "ACADEMIC YEAR", value: academicYear });
   if (deadline) badges.push({ label: "DEADLINE", value: deadline });
   if (examDate) badges.push({ label: "EXAM DATE", value: examDate });
   if (refNo) badges.push({ label: "KTU REF", value: refNo });
@@ -343,8 +371,14 @@ export function renderPosterSvg(options: SvgExportOptions): string {
  * High-resolution poster buffer exporter.
  * Produces crisp, standalone SVG or HTML export buffers ready for client download or storage.
  */
-export async function exportPosterBuffer(options: SvgExportOptions): Promise<ExportResult> {
-  const { announcement, format = "instagram_portrait", exportType = "svg" } = options;
+export function exportPosterBuffer(
+  options: SvgExportOptions
+): Promise<ExportResult> {
+  const {
+    announcement,
+    format = "instagram_portrait",
+    exportType = "svg",
+  } = options;
   const { width, height } = POSTER_DIMENSIONS[format];
 
   logger.info(
@@ -355,11 +389,11 @@ export async function exportPosterBuffer(options: SvgExportOptions): Promise<Exp
   const svgContent = renderPosterSvg(options);
   const data = Buffer.from(svgContent, "utf-8");
 
-  return {
+  return Promise.resolve({
     data,
     mimeType: "image/svg+xml",
     width,
     height,
     filename: `KTU-BTech-${announcement.id}-${format}.svg`,
-  };
+  });
 }

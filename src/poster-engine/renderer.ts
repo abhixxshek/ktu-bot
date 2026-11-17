@@ -108,7 +108,7 @@ export function renderPosterHtmlDocument(params: {
     overrides?.fontSizeScale ?? 1.0
   );
 
-  const bodyFontSize = format === "landscape" ? 22 : 28;
+  const bodyFontSize = format === "landscape" ? 28 : 34;
   const align =
     overrides?.textAlign ??
     (tokens.layoutVariant === "centered" ? "center" : "left");
@@ -116,7 +116,11 @@ export function renderPosterHtmlDocument(params: {
   const bg = overrides?.backgroundOverride || tokens.background;
 
   // Build only non-empty metadata badges (Zero-fabrication invariant)
-  const metaPills: Array<{ label: string; value: string; highlight?: boolean }> = [];
+  const metaPills: Array<{
+    label: string;
+    value: string;
+    highlight?: boolean;
+  }> = [];
   if (placeholders.SEMESTER && placeholders.SEMESTER.trim()) {
     metaPills.push({ label: "SEMESTER", value: placeholders.SEMESTER.trim() });
   }
